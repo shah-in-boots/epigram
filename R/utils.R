@@ -107,11 +107,14 @@ has_cli <- function() {
   isTRUE(requireNamespace("cli", quietly = TRUE))
 }
 
-#' Package color option with the old option name as a compatibility fallback
+#' Package color option with the old option names as compatibility fallbacks
 #' @keywords internal
 #' @noRd
-epigram_color <- function(default = TRUE) {
-	getOption("epigram.color", getOption("mesa.color", default))
+recast_color <- function(default = TRUE) {
+	getOption(
+		"recast.color",
+		getOption("epigram.color", getOption("mesa.color", default))
+	)
 }
 
 #' A stable content-derived dataset id for frames passed as inline

@@ -5,7 +5,7 @@
 \alias{vocabulary}
 \alias{term_roles}
 \alias{term_transformations}
-\title{The \code{epigram} vocabulary}
+\title{The \code{recast} vocabulary}
 \usage{
 formula_patterns()
 
@@ -17,7 +17,7 @@ term_transformations()
 A named list (\code{term_roles()}) or character vector (others)
 }
 \description{
-The grammar of \code{{epigram}} is built on small, controlled vocabularies: the
+The grammar of \code{{recast}} is built on small, controlled vocabularies: the
 causal \emph{roles} a term can play, the \emph{patterns} by which formulas expand,
 and the \emph{transformations} a term can carry. These accessors expose the
 vocabularies so they can be inspected (and so error messages can point

@@ -1,4 +1,4 @@
-# epigram
+# recast
 
 ## R CMD check results
 
@@ -11,7 +11,7 @@ clean locally, including vignette rebuilding and the full test suite.
 
 * The package was previously prepared for submission under an earlier,
   substantially different implementation (see `NEWS.md` and
-  [blueprint.md](https://github.com/shah-in-boots/epigram/blob/main/blueprint.md)
+  [blueprint.md](https://github.com/shah-in-boots/recast/blob/main/blueprint.md)
   for the full rebuild history). The term, formula, fitting, collection, and
   table layers have all been reworked since; the notes from that earlier
   attempt (reference formatting, `@return`/`\value` documentation,

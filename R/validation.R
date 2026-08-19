@@ -6,7 +6,7 @@
 #' @noRd
 validate_class <- function(x, what) {
 	# An S7 class defined inside a package reports as `pkg::Class` (e.g.
-	# `epigram::mdl_gt`), which base `inherits(x, "mdl_gt")` will not match against
+	# `recast::mdl_gt`), which base `inherits(x, "mdl_gt")` will not match against
 	# the bare name. Comparing against the object's class names with any `pkg::`
 	# prefix stripped lets `validate_class(spec, "mdl_gt")` recognize the S7 spec
 	# without every call site having to know it is S7. (See `vignette("s7")`.)

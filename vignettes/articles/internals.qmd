@@ -8,12 +8,12 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
 Developer-facing companion to `vignette("usage")`. Shows the data structure
-under each layer and the seams between them, using `epigram:::` internals where
+under each layer and the seams between them, using `recast:::` internals where
 needed. Each section ends with **review questions** — the places where the
 design deserves a second pair of eyes. Concrete defects live in `issues.md`.
 
 ```{r setup}
-library(epigram)
+library(recast)
 d <- mtcars
 d$cyl <- factor(d$cyl)
 ```
@@ -42,7 +42,7 @@ vctrs::vec_proxy(t)
 The raw parse, before defaults:
 
 ```{r}
-epigram:::parse_formula_terms(mpg ~ .x(wt) + .i(cyl))
+recast:::parse_formula_terms(mpg ~ .x(wt) + .i(cyl))
 ```
 
 Note `side`: strata and random effects get `side = "meta"` — neither left nor

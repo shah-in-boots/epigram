@@ -5,7 +5,7 @@ title: "Model-table gallery"
 ```{r}
 #| include: false
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
-library(epigram)
+library(recast)
 d <- mtcars
 d$cyl <- factor(d$cyl)
 d$am <- factor(d$am)

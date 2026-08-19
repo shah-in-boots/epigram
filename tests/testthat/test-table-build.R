@@ -3,7 +3,7 @@ test_that("coefficient effects have stable semantic identity and reference ancho
 		mdl_gt() |>
 		inspect_mdl_gt("effects")
 
-	expect_named(effects, epigram:::effect_frame_fields())
+	expect_named(effects, recast:::effect_frame_fields())
 	expect_equal(nrow(effects), 6)
 	expect_equal(sum(effects$is_reference), 2)
 	expect_false(anyNA(effects$model))
@@ -27,8 +27,8 @@ test_that("multiple outcomes and wide categorical terms share one effect schema"
 })
 
 test_that("the built-in group registry declares its semantic contract", {
-	registry <- epigram:::mdl_gt_group_registry()
-	expect_named(registry, epigram:::mdl_gt_group_ids())
+	registry <- recast:::mdl_gt_group_registry()
+	expect_named(registry, recast:::mdl_gt_group_ids())
 	for (entry in registry) {
 		expect_named(entry, c(
 			"required_measures", "grain", "supported_axes", "supported_views",

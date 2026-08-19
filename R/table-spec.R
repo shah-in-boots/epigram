@@ -143,11 +143,11 @@ S7_mdl_tbl <- S7::new_S3_class("mdl_tbl")
 #' @export
 mdl_gt <- S7::new_class(
 	"mdl_gt",
-	package = "epigram",
-	# Note this class reports itself as `epigram::mdl_gt`: S7 namespaces classes
+	package = "recast",
+	# Note this class reports itself as `recast::mdl_gt`: S7 namespaces classes
 	# defined inside a package (whether or not `package =` is passed). So base
 	# `inherits(x, "mdl_gt")` and S3 dispatch on the bare name do *not* match it.
-	# epigram keeps its `inherits()`-based `validate_class()` and its S3
+	# recast keeps its `inherits()`-based `validate_class()` and its S3
 	# `adjustment_sets()` generic working anyway -- the former strips the `pkg::`
 	# prefix before comparing, the latter gains the spec through an S7 *method*.
 	# See `vignette("s7")` for the full interop story.

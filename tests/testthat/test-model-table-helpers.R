@@ -3,7 +3,7 @@
 
 test_that("printing a model table reports the state of the fleet", {
 
-	withr::local_options(epigram.color = FALSE)
+	withr::local_options(recast.color = FALSE)
 
 	x <-
 		fmls(mpg ~ wt + hp + .s(am), pattern = "sequential") |>
@@ -29,7 +29,7 @@ test_that("printing a model table reports the state of the fleet", {
 
 test_that("printing distinguishes fitted, failed, and unfit models", {
 
-	withr::local_options(epigram.color = FALSE)
+	withr::local_options(recast.color = FALSE)
 
 	fitted <-
 		fmls(mpg ~ wt) |>
@@ -61,7 +61,7 @@ test_that("printing distinguishes fitted, failed, and unfit models", {
 
 test_that("summary maps the fleet and explains failures", {
 
-	withr::local_options(epigram.color = FALSE)
+	withr::local_options(recast.color = FALSE)
 
 	fitted <-
 		fmls(mpg ~ wt + .s(am)) |>

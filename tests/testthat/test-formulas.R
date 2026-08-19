@@ -229,7 +229,7 @@ test_that("terms with multiple roles can be converted to formulas", {
 
 test_that("printed formulas annotate meta terms with their runes", {
 
-	withr::local_options(epigram.color = FALSE)
+	withr::local_options(recast.color = FALSE)
 
 	f <- fmls(mpg ~ .x(wt) + hp + .s(am))
 	expect_match(format(f), "mpg ~ wt + hp + .s(am)", fixed = TRUE)

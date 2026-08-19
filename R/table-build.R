@@ -10,7 +10,7 @@
 #' @noRd
 mdl_gt_build <- S7::new_class(
 	"mdl_gt_build",
-	package = "epigram",
+	package = "recast",
 	properties = list(
 		selected = S7::class_data.frame,
 		effects = S7::class_data.frame,

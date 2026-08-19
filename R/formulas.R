@@ -257,7 +257,7 @@ key_terms <- function(x) {
 
 #' @export
 format.fmls <- function(x,
-												color = epigram_color(),
+												color = recast_color(),
 												...) {
 
 	# Break into matrix and key
@@ -317,7 +317,7 @@ format.fmls <- function(x,
 
 #' @export
 print.fmls <- function(x,
-											 color = epigram_color(),
+											 color = recast_color(),
 											 ...) {
 
 	# The deck summary: what is about to be fit, at a glance

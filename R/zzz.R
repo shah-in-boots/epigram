@@ -29,7 +29,7 @@ utils::globalVariables(c(
 
 	# S7 methods registered on generics owned elsewhere -- base's `print()` and
 	# `format()`, and any S7 generic another package might import -- are wired up
-	# at load time here. Methods on epigram's own S7 generics self-register, so this
+	# at load time here. Methods on recast's own S7 generics self-register, so this
 	# is belt-and-suspenders; it is also the one line every S7-using package
 	# needs and the safest habit. See `vignette("s7")`.
 	S7::methods_register()

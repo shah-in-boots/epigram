@@ -13,7 +13,7 @@ it. Succinct by intent; the machinery behind each chunk is in
 `vignette("internals")`.
 
 ```{r setup}
-library(epigram)
+library(recast)
 d <- mtcars
 d$cyl <- factor(d$cyl)
 d$am <- factor(d$am, levels = c(0, 1), labels = c("Automatic", "Manual"))

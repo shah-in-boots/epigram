@@ -1,5 +1,5 @@
-Package: epigram
-Title: Epidemiology Grammar for Models
+Package: recast
+Title: Roles, Formulas, and Model Tables for Causal Inference
 Version: 0.0.0.9000
 Authors@R: 
     person(given = "Anish S.",
@@ -59,13 +59,12 @@ Suggests:
     tidycmprsk,
     quarto
 VignetteBuilder: knitr, quarto
-URL: https://shah-in-boots.github.io/epigram/, https://github.com/shah-in-boots/epigram
-BugReports: https://github.com/shah-in-boots/epigram/issues
+URL: https://shah-in-boots.github.io/recast/, https://github.com/shah-in-boots/recast
+BugReports: https://github.com/shah-in-boots/recast/issues
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.0.0
 Collate: 
     'data.R'
-    'epigram-package.R'
     'family.R'
     'fit.R'
     'fluency.R'
@@ -77,6 +76,7 @@ Collate:
     'model-table.R'
     'models.R'
     'patterns.R'
+    'recast-package.R'
     'table-build.R'
     'table-layout.R'
     'table-render.R'

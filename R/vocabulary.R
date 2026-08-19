@@ -74,7 +74,7 @@
 #' @noRd
 mdl_gt_color_roles <- function(text,
 														 role,
-														 color = epigram_color()) {
+														 color = recast_color()) {
 	if (!isTRUE(color) || !has_cli()) {
 		return(text)
 	}
@@ -97,11 +97,11 @@ mdl_gt_color_roles <- function(text,
 	out
 }
 
-#' The `epigram` vocabulary
+#' The `recast` vocabulary
 #'
 #' @description
 #'
-#' The grammar of `{epigram}` is built on small, controlled vocabularies: the
+#' The grammar of `{recast}` is built on small, controlled vocabularies: the
 #' causal *roles* a term can play, the *patterns* by which formulas expand,
 #' and the *transformations* a term can carry. These accessors expose the
 #' vocabularies so they can be inspected (and so error messages can point

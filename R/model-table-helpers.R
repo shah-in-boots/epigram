@@ -46,7 +46,7 @@ model_display_na <- function() {
 #' @keywords internal
 #' @noRd
 color_status <- function(symbol, status) {
-	if (!isTRUE(epigram_color()) || !has_cli()) {
+	if (!isTRUE(recast_color()) || !has_cli()) {
 		return(symbol)
 	}
 	fn <- switch(
@@ -759,7 +759,7 @@ adjustment_sets.mdl_tbl <- function(x, ...) {
 # `adjustment_sets()` stays an S3 generic (it also dispatches on the vctrs
 # `mdl_tbl`). The S7 `<mdl_gt>` joins that dispatch through an S7 *method*
 # registered on the S3 generic: a plain `adjustment_sets.mdl_gt` would never be
-# found, because the spec's class is the namespaced `epigram::mdl_gt`, not the bare
+# found, because the spec's class is the namespaced `recast::mdl_gt`, not the bare
 # `mdl_gt` S3 dispatch looks for. `S7::methods_register()` (in `.onLoad`) wires
 # this method into S3 dispatch at load, so no `@export` is needed.
 method(adjustment_sets, mdl_gt) <- function(x, ...) {

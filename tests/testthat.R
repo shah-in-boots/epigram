@@ -1,4 +1,4 @@
 library(testthat)
-library(epigram)
+library(recast)
 
-test_check("epigram")
+test_check("recast")

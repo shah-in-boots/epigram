@@ -16,7 +16,7 @@ template:
 
 destination: docs
 
-url: https://shah-in-boots.github.io/epigram/
+url: https://shah-in-boots.github.io/recast/
 
 home:
   title: A Causality-Informed Modeling Approach
@@ -50,7 +50,7 @@ navbar:
       href: reference/index.html
     github:
       icon: fab fa-github fa-lg
-      href: https://github.com/shah-in-boots/epigram/
+      href: https://github.com/shah-in-boots/recast/
 
 articles:
 - title: The grammar

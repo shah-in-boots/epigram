@@ -1,7 +1,7 @@
 ---
-title: "S7 in epigram: objects on top of vectors"
+title: "S7 in recast: objects on top of vectors"
 vignette: >
-  %\VignetteIndexEntry{S7 in epigram: objects on top of vectors}
+  %\VignetteIndexEntry{S7 in recast: objects on top of vectors}
   %\VignetteEngine{quarto::html}
   %\VignetteEncoding{UTF-8}
 knitr:
@@ -13,7 +13,7 @@ knitr:
 ```{r}
 #| label: setup
 #| include: false
-library(epigram)
+library(recast)
 ```
 
 [S7](https://rconsortium.github.io/S7/) is the R Consortium's next-generation
@@ -21,7 +21,7 @@ object system — a single, well-specified successor to S3 and S4, built by the
 same working group that maintains R's object model, and intended one day to
 land in base R. The tidyverse has been moving its *object* layer onto it. This
 vignette is a field guide to adopting S7 in a package that already leans on
-**vctrs** and **S3**, written from `epigram`'s own migration: the `<mdl_gt>` table
+**vctrs** and **S3**, written from `recast`'s own migration: the `<mdl_gt>` table
 specification and its resolved build were rewritten as S7 classes, and
 every decision — including the ones that bit — is recorded here with the real
 code.
@@ -30,7 +30,7 @@ The single most important idea comes first, because it shapes everything else.
 
 ## S7 does not replace vctrs — it sits above it
 
-`epigram` has two kinds of custom class, and S7 is right for only one of them.
+`recast` has two kinds of custom class, and S7 is right for only one of them.
 
 | Kind | Classes | Built on | It is… |
 | --- | --- | --- | --- |
@@ -45,7 +45,7 @@ with typed properties**; they have none of that vectorization. Rewriting `tm`
 as S7 would delete the very thing that makes it useful and force you to
 rebuild it by hand, worse.
 
-So the rule `epigram` follows — the same one the tidyverse follows — is:
+So the rule `recast` follows — the same one the tidyverse follows — is:
 
 > **vctrs for vectors, S7 for objects.** They are complementary layers, not
 > competitors. Use vctrs when the thing *is a vector*; reach for S7 when the
@@ -97,7 +97,7 @@ name your own — which is how a *vctrs* type joins in (next section).
 This is the benefit that justified the whole migration. A validator returns
 `NULL` (or `character(0)`) when the object is valid, or one string per
 violation. Crucially, S7 runs it **on construction and again on every property
-assignment**. `epigram`'s spec validator is:
+assignment**. `recast`'s spec validator is:
 
 ```{r}
 #| label: validator
@@ -206,7 +206,7 @@ spec@layout$preset
 
 ## Value semantics come for free
 
-S7 objects are ordinary R values — copy-on-modify. The `epigram` verbs
+S7 objects are ordinary R values — copy-on-modify. The `recast` verbs
 (`select_terms()`, `modify_style()`, …) each return a modified copy and never
 mutate their input, which is exactly the lazy, composable contract the table
 grammar wants:
@@ -223,7 +223,7 @@ refined@style$digits   # only the returned copy carries the instruction
 
 ## Generics and methods
 
-`epigram` uses all three ways S7 interacts with generics. Each is a small, real
+`recast` uses all three ways S7 interacts with generics. Each is a small, real
 example.
 
 ### An S7 generic of your own: `as_gt()`
@@ -264,7 +264,7 @@ spec   # dispatches to the S7 `format` + `print` methods
 
 ### An S7 method on someone else's *S3* generic: `adjustment_sets()`
 
-`adjustment_sets()` is `epigram`'s own S3 generic, and it must keep dispatching on
+`adjustment_sets()` is `recast`'s own S3 generic, and it must keep dispatching on
 the vctrs `mdl_tbl`. To make the S7 `<mdl_gt>` join that same dispatch, register
 an S7 *method* on the existing S3 generic:
 
@@ -282,7 +282,7 @@ once you understand the namespacing wrinkle below.
 ## Interop: three things that will bite, and their fixes
 
 Adopting S7 inside a package that already uses S3 and `inherits()` runs into a
-handful of realities. `epigram` hit all of them; here is the map.
+handful of realities. `recast` hit all of them; here is the map.
 
 ### 1. In a package, an S7 class is **namespaced**
 
@@ -292,7 +292,7 @@ the bare name:
 ```{r}
 #| label: namespacing
 class(spec)
-inherits(spec, "mdl_gt")        # FALSE! the class is "epigram::mdl_gt"
+inherits(spec, "mdl_gt")        # FALSE! the class is "recast::mdl_gt"
 inherits(spec, mdl_gt)          # TRUE — pass the class *object*, not a string
 S7::S7_inherits(spec, mdl_gt)   # TRUE — the explicit S7 predicate
 ```
@@ -301,20 +301,20 @@ This happens whether or not you pass `package =` to `new_class()` — S7 infers
 the package from where the class is defined. It has two consequences a mixed
 codebase must handle:
 
-- **`inherits(x, "mdl_gt")` string checks stop matching.** `epigram` validates
+- **`inherits(x, "mdl_gt")` string checks stop matching.** `recast` validates
   types through one helper, `validate_class()`, so the fix lived in one place:
   compare against the object's class names with any `pkg::` prefix stripped.
 
   ```{r}
   #| label: validate-class
   #| eval: false
-  bareClasses <- sub("^[^:]*::", "", class(x))   # "epigram::mdl_gt" -> "mdl_gt"
+  bareClasses <- sub("^[^:]*::", "", class(x))   # "recast::mdl_gt" -> "mdl_gt"
   if (!inherits(x, what) && !any(what %in% bareClasses)) stop(...)
   ```
 
 - **S3 dispatch on the bare name stops finding the method.** A plain
   `adjustment_sets.mdl_gt` is never called, because dispatch sees
-  `epigram::mdl_gt`. That is *why* `adjustment_sets` needed the S7-method
+  `recast::mdl_gt`. That is *why* `adjustment_sets` needed the S7-method
   treatment above rather than a plain S3 method — S7 registers it under the
   namespaced class so dispatch resolves.
 
@@ -381,7 +381,7 @@ what it is good at.
 
 ## Two ends of the S7 spectrum
 
-Not every S7 class needs the full apparatus. `epigram`'s second S7 class,
+Not every S7 class needs the full apparatus. `recast`'s second S7 class,
 `mdl_gt_build` (the resolved output of the build orchestrator), is a *plain
 value* — all typed properties, no behavior:
 

@@ -1,6 +1,6 @@
-# epigram (developmental version)
+# recast (developmental version)
 
-This development cycle works through Milestones 0–7 of [blueprint.md](https://github.com/shah-in-boots/epigram/blob/main/blueprint.md), rebuilding the term, formula, fitting, collection, and table layers so the package feels fluid to play with, and documenting the result. Design decisions are recorded in `DESIGN.md`.
+This development cycle works through Milestones 0–7 of [blueprint.md](https://github.com/shah-in-boots/recast/blob/main/blueprint.md), rebuilding the term, formula, fitting, collection, and table layers so the package feels fluid to play with, and documenting the result. Design decisions are recorded in `DESIGN.md`.
 
 ## Telling the story (Milestone 7)
 
@@ -107,7 +107,7 @@ This development cycle works through Milestones 0–7 of [blueprint.md](https://
 
 * Printing a `fmls` now leads with a deck summary: formula count, outcomes, exposures, strata (with levels), random effects, and subsets
 
-* Term and formula printing now uses `cli` named ANSI colors by role, with `epigram.color` for user control
+* Term and formula printing now uses `cli` named ANSI colors by role, with `recast.color` for user control
 
 ## Fixes
 
@@ -129,7 +129,7 @@ This development cycle works through Milestones 0–7 of [blueprint.md](https://
 
 * Author-only tests against private datasets moved to `tests/manual/`; R CMD check runs clean
 
-* Renamed package from `{rmdl}` to `{mesa}`, and now from `{mesa}` to `{epigram}`.
+* Renamed package from `{rmdl}` to `{mesa}`, then to `{epigram}`, and now to `{recast}` — a verb for what the package does to variables (casting them into causal roles) and to models (melting them down and pouring them again). The color option follows as `recast.color`; the old `epigram.color` and `mesa.color` names still work as fallbacks.
 
 * Remove additional imports, e.g. `{janitor}`, with bespoke function rewrites, to help decrease dependency burden
 

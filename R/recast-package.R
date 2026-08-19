@@ -1,7 +1,7 @@
-#' epigram package
+#' recast package
 #'
 #' @docType package
-#' @aliases epigram-package
+#' @aliases recast-package
 #' @keywords internal
 "_PACKAGE"
 
@@ -11,12 +11,12 @@
 #' @importFrom lifecycle deprecated
 #' @importFrom methods setOldClass
 #' @keywords internal
-#' @name epigram-vctrs
+#' @name recast-vctrs
 NULL
 
 #' Internal S7 machinery
 #'
-#' `epigram` uses S7 for its *scalar specification and build* objects (the
+#' `recast` uses S7 for its *scalar specification and build* objects (the
 #' `<mdl_gt>` table spec and its resolved pipeline) while keeping its *vector*
 #' types (`tm`, `fmls`, `mdl`, `mdl_tbl`) on vctrs — the two class systems are
 #' complementary layers, not competitors. See `vignette("s7")`.
@@ -25,7 +25,7 @@ NULL
 #' @importFrom S7 class_data.frame class_list class_integer class_any
 #' @rawNamespace importFrom(S7, "method<-")
 #' @keywords internal
-#' @name epigram-s7
+#' @name recast-s7
 NULL
 
 
