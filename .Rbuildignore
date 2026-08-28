@@ -19,5 +19,5 @@
 ^vignettes/\.quarto$
 ^vignettes/*_files$
 ^\.gitmodules$
-^branding$
+^mark$
 ^tools$
