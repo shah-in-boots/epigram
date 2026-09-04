@@ -103,6 +103,11 @@ fit.fmls <- function(object,
 			execute_fit(engine, plan$formula[[i]], fitData, dots, dataName),
 			error = function(e) e
 		)
+		fitWarnings <- character()
+		if (!inherits(x, "error")) {
+			fitWarnings <- x$warnings
+			x <- x$fit
+		}
 
 		if (raw) {
 			if (inherits(x, "error")) {
@@ -111,6 +116,11 @@ fit.fmls <- function(object,
 					conditionMessage(x),
 					call. = FALSE
 				)
+			}
+			# A bare fit has nowhere to keep its warnings, so they are re-emitted
+			for (w in fitWarnings) {
+				warning("Model ", i, " (", plan$formula_call[i], "): ", w,
+								call. = FALSE)
 			}
 			ml <- append(ml, list(x))
 		} else {
@@ -123,7 +133,10 @@ fit.fmls <- function(object,
 				strata_level = plan$strata_level[[i]],
 				subset_name = plan$subset[i]
 			)
-			y <-
+			# Tidying warns too -- `confint()` on a separated `glm` profiles the
+			# likelihood and `glm.fit` warns on every refit, dozens of times per
+			# model -- so the record covers construction as well as the fit
+			y <- withCallingHandlers(
 				if (inherits(x, "error")) {
 					do.call(mdl, c(
 						list(engine$name,
@@ -132,7 +145,25 @@ fit.fmls <- function(object,
 					))
 				} else {
 					do.call(mdl, c(list(x), context))
+				},
+				warning = function(w) {
+					fitWarnings <<- c(fitWarnings, conditionMessage(w))
+					invokeRestart("muffleWarning")
 				}
+			)
+			# The warnings ride on the model, one line per distinct message with
+			# its count (profiling a separated `glm` raises the same `glm.fit`
+			# warning on every refit, and forty copies of one line say less than
+			# the line and its count): `model_diagnostics()` reads them back and
+			# the model table's print counts the models that carry any
+			counts <- table(factor(fitWarnings, levels = unique(fitWarnings)))
+			si <- field(y, "summaryInfo")[[1]]
+			si$warnings <- if (length(counts)) {
+				paste0(names(counts), ifelse(counts > 1, paste0(" (x", counts, ")"), ""))
+			} else {
+				character()
+			}
+			field(y, "summaryInfo") <- list(si)
 			ml <- c(ml, y)
 		}
 	}
@@ -216,7 +247,10 @@ plan_fit <- function(object, data = NULL, ...) {
 							call. = FALSE
 						)
 					}
-					lvls <- unique(stats::na.omit(data[[strataVar]]))
+					# In level order (a factor's own, else sorted), not order of first
+					# appearance in the data: the strata become the table's row bands,
+					# and a vector of labels for them applies in this order
+					lvls <- sort(unique(stats::na.omit(data[[strataVar]])))
 					strataRows[[j]] <- tibble::tibble(
 						strata_variable = strataVar,
 						strata_level = as.list(lvls)
@@ -296,17 +330,28 @@ resolve_fit_engine <- function(.fn, expr) {
 #' @noRd
 execute_fit <- function(engine, f, fitData, dots, dataName) {
 
-	if (engine$type == "parsnip") {
-		fitted <- do.call(
-			parsnip::fit,
-			c(list(engine$fn, formula = f, data = fitData), dots)
-		)
-		x <- parsnip::extract_fit_engine(fitted)
-	} else {
-		args <- c(list(formula = f), dots)
-		args$data <- quote(fitData)
-		x <- do.call(engine$fn, args = args)
-	}
+	# Warnings are collected rather than emitted: sixteen logistic fits on a
+	# sparse cross-classification raise fifty `glm.fit` warnings that scroll
+	# past on a console and never reach anyone on a pipeline worker. They are
+	# returned beside the fit so `fit()` can record them on the model
+	warnings <- character()
+	x <- withCallingHandlers(
+		if (engine$type == "parsnip") {
+			fitted <- do.call(
+				parsnip::fit,
+				c(list(engine$fn, formula = f, data = fitData), dots)
+			)
+			parsnip::extract_fit_engine(fitted)
+		} else {
+			args <- c(list(formula = f), dots)
+			args$data <- quote(fitData)
+			do.call(engine$fn, args = args)
+		},
+		warning = function(w) {
+			warnings <<- c(warnings, conditionMessage(w))
+			invokeRestart("muffleWarning")
+		}
+	)
 
 	# Normalize the recorded call so models compare cleanly: the fitting
 	# function appears by name (not as an inlined closure from `do.call()`)
@@ -329,46 +374,50 @@ execute_fit <- function(engine, f, fitData, dots, dataName) {
 		x
 	}, error = function(e) x)
 
-	x
+	list(fit = x, warnings = warnings)
 }
 
 #' @importFrom generics tidy
 #' @export
 generics::tidy
 
-#' Create a "fail-safe" of tidying fits
+#' Tidy a fit, or fall back to `NA` with the reason said aloud
 #'
 #' Estimates are stored on the linear scale, always; exponentiation is
 #' deferred to [flatten_models()], so no `exponentiate` argument is offered.
+#' A fit that [broom::tidy()] cannot handle gives a scalar `NA`, which
+#' `new_model_from_fit()` recognises as "no parameters".
 #' @noRd
 my_tidy <- function(x,
 										conf.int = TRUE,
 										conf.level = 0.95,
 										...) {
-	broom::tidy(x,
-							conf.int = conf.int,
-							conf.level = conf.level,
-							exponentiate = FALSE) |>
-		dplyr::rename_with(.fn = ~ gsub("\\.", "_", x = .x))
+	tryCatch(
+		broom::tidy(x,
+								conf.int = conf.int,
+								conf.level = conf.level,
+								exponentiate = FALSE) |>
+			dplyr::rename_with(.fn = ~ gsub("\\.", "_", x = .x)),
+		error = function(e) {
+			message("Error: ", conditionMessage(e))
+			NA
+		}
+	)
 }
-
-#' Local load of it if not when package starts
-#' @noRd
-possible_tidy <-
-	purrr::possibly(my_tidy, otherwise = NA, quiet = FALSE)
 
 #' @importFrom generics glance
 #' @export
 generics::glance
 
-#' Create a "fail-safe" of glance at fits
+#' Glance at a fit, or fall back to `NA` with the reason said aloud
 #' @noRd
 my_glance <- function(x, ...) {
-	broom::glance(x) |>
-		dplyr::rename_with(.fn = ~ gsub("\\.", "_", x = .x))
+	tryCatch(
+		broom::glance(x) |>
+			dplyr::rename_with(.fn = ~ gsub("\\.", "_", x = .x)),
+		error = function(e) {
+			message("Error: ", conditionMessage(e))
+			NA
+		}
+	)
 }
-
-#' Local load of it if not when package starts
-#' @noRd
-possible_glance <-
-	purrr::possibly(my_glance, otherwise = NA, quiet = FALSE)

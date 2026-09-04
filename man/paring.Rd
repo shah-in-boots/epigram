@@ -72,8 +72,9 @@ entirely, whatever the role — the way to set aside a mediator or a
 collider before laying the rest out.
 }
 
-Terms are given as bare names or strings, matched by exact identity —
-never by substring — and every requested value is checked against what
+Terms are given as bare names or strings (a variable holding a name is
+spliced in with \verb{!!}, a vector of names with \verb{!!!}), matched by exact
+identity — never by substring — and every requested value is checked against what
 the table holds, so a typo errors with the available values instead of
 silently keeping nothing. Each verb reports what it kept with a message,
 and they chain in any order. Ordinary \code{dplyr} verbs still work on the

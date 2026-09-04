@@ -157,17 +157,6 @@ resolve_term_metadata <- function(x, requested) {
 
 #' @keywords internal
 #' @noRd
-match_term_keys <- function(keys, metadata) {
-	if (!nrow(metadata)) return(rep(NA_character_, length(keys)))
-	lookup <- character()
-	for (i in seq_len(nrow(metadata))) {
-		lookup[metadata$keys[[i]]] <- metadata$variable[i]
-	}
-	unname(lookup[keys])
-}
-
-#' @keywords internal
-#' @noRd
 mdl_gt_display_terms <- function(mt, selection, models) {
 	if (!is.null(selection$terms)) {
 		return(resolve_term_metadata(mt, selection_input(selection$terms)))
@@ -234,29 +223,45 @@ realize_mdl_gt_effects <- function(x, selection) {
 	if (!nrow(effects)) {
 		stop("The selected models produced no displayable effects.", call. = FALSE)
 	}
-	effects <- apply_effect_labels(effects, x@labels$relabels)
+	# An estimate whose interval could not be bounded is a separated fit, not
+	# a number: a limit at infinity, or one the likelihood profile never found
+	# (`NA` beside a finite estimate, in a model whose other coefficients do
+	# have limits -- `confint()` on a separated `glm` returns exactly that).
+	# Blanking the interval alone left `13203562.47` standing in the estimate
+	# column of a `view = "separate"` table, and a magnitude like that reads
+	# as a finding. An engine whose tidy output carries no interval at all
+	# fills every bound with `NA`, and those estimates stay
+	lo <- effects$conf_low
+	hi <- effects$conf_high
+	bounded <- stats::ave(is.finite(lo) | is.finite(hi), effects$model, FUN = any)
+	lost <- is.infinite(lo) | is.infinite(hi) |
+		(bounded & !is.na(effects$estimate) & (is.na(lo) | is.na(hi)))
+	effects$estimate[lost] <- NA_real_
+	effects$conf_low[lost] <- NA_real_
+	effects$conf_high[lost] <- NA_real_
+	# The Wald p beside it (0.9997 on a standard error in the thousands) is
+	# the same non-number, so it goes too
+	effects$p_value[lost] <- NA_real_
 	effects <- effects[order(
 		effects$outcome_order, effects$stratum_order, effects$adjustment_order,
 		effects$term_order, effects$modifier_order, effects$modifier_level_order,
 		effects$contrast_order, effects$model_order
 	), , drop = FALSE]
+	# Labels follow the sort, so a vector of level labels applies in the
+	# order the table will show the levels
+	effects <- apply_effect_labels(effects, x@labels$relabels)
 	effects$effect_id <- sprintf("effect_%05d", seq_len(nrow(effects)))
-	tibble::as_tibble(effects[effect_frame_fields()])
-}
-
-#' @keywords internal
-#' @noRd
-effect_frame_fields <- function() {
-	c(
+	fields <- c(
 		"effect_id", "model", "source", "outcome", "outcome_label", "term",
 		"term_label", "contrast", "contrast_label", "adjustment",
 		"adjustment_label", "modifier", "modifier_label", "modifier_level",
-		"modifier_level_label", "stratum", "stratum_level", "subset", "dataset",
-		"family", "is_reference", "estimate", "conf_low", "conf_high",
-		"p_value", "nobs", "exponentiated", "outcome_order", "term_order",
-		"contrast_order", "adjustment_order", "modifier_order",
-		"modifier_level_order", "stratum_order", "model_order"
+		"modifier_level_label", "stratum", "stratum_label", "stratum_level",
+		"stratum_level_label", "subset", "dataset", "family", "is_reference",
+		"estimate", "conf_low", "conf_high", "p_value", "nobs", "exponentiated",
+		"outcome_order", "term_order", "contrast_order", "adjustment_order",
+		"modifier_order", "modifier_level_order", "stratum_order", "model_order"
 	)
+	tibble::as_tibble(effects[fields])
 }
 
 #' @keywords internal
@@ -272,7 +277,10 @@ realize_coefficient_effects <- function(x, selection) {
 	}
 	if (!"nobs" %in% names(flat)) flat$nobs <- NA_real_
 	if (!"exponentiated" %in% names(flat)) flat$exponentiated <- FALSE
-	flat$variable <- match_term_keys(flat$term, terms)
+	# Each tidy key (`cyl6`, `wt`) points back at the display term it belongs to
+	lookup <- character()
+	for (i in seq_len(nrow(terms))) lookup[terms$keys[[i]]] <- terms$variable[i]
+	flat$variable <- unname(lookup[flat$term])
 	flat <- flat[!is.na(flat$variable), , drop = FALSE]
 	if (!nrow(flat)) {
 		stop("The selected terms have no estimates among the selected models.",
@@ -335,7 +343,8 @@ realize_coefficient_effects <- function(x, selection) {
 		adjustment = as.integer(adj), adjustment_label = adjLabel,
 		modifier = NA_character_, modifier_label = NA_character_,
 		modifier_level = NA_character_, modifier_level_label = NA_character_,
-		stratum = modelMeta$strata, stratum_level = modelMeta$level,
+		stratum = modelMeta$strata, stratum_label = modelMeta$strata,
+		stratum_level = modelMeta$level, stratum_level_label = modelMeta$level,
 		subset = modelMeta$subset, dataset = modelMeta$data_id,
 		family = modelMeta$family, is_reference = dec$is_reference,
 		estimate = dec$estimate, conf_low = dec$conf_low,
@@ -353,6 +362,14 @@ realize_coefficient_effects <- function(x, selection) {
 }
 
 #' Every modifier declared by each selected model
+#'
+#' A term is a modifier *of this model* only when its crossed component with
+#' the model's exposure (`exposure:modifier`, either order) is a member of the
+#' model's formula. Membership of the bare term is not enough: the term table
+#' is table-wide, so in a table that combines families a modifier of one
+#' family is an ordinary covariate of the next (`.x(age) + .i(sex) + race`
+#' beside `.x(age) + .i(race) + sex`), and attributing it by role alone sent
+#' `estimate_interaction()` after a coefficient the model never had.
 #' @keywords internal
 #' @noRd
 model_modifier_terms <- function(models) {
@@ -360,11 +377,27 @@ model_modifier_terms <- function(models) {
 	mods <- unique(proxy$term[proxy$role == "interaction" &
 		!grepl(":", proxy$term, fixed = TRUE)])
 	fm <- formula_matrix(models)
+	crossed <- names(fm)[grepl(":", names(fm), fixed = TRUE)]
 	lapply(seq_len(nrow(models)), function(i) {
+		exposure <- models$exposure[i]
 		candidates <- mods[mods %in% names(fm)]
-		hit <- candidates[vapply(candidates, function(m) fm[[m]][i] >= 1,
-			logical(1))]
-		if (!length(hit) && !is.na(models$interaction[i])) models$interaction[i] else hit
+		hit <- candidates[vapply(candidates, function(m) {
+			cross <- intersect(
+				c(paste0(exposure, ":", m), paste0(m, ":", exposure)),
+				crossed
+			)
+			# `isTRUE()`: a term absent from one family's rows can sit as `NA` in
+			# the combined matrix, and `NA >= 1` would index a phantom `NA` modifier
+			isTRUE(fm[[m]][i] >= 1) && length(cross) > 0 &&
+				any(vapply(cross, function(cc) isTRUE(fm[[cc]][i] >= 1), logical(1)))
+		}, logical(1))]
+		# A table whose formula matrix records no crossed components at all (a
+		# model wrapped from a raw fit) still has the scalar convenience column
+		if (!length(hit) && !length(crossed) && !is.na(models$interaction[i])) {
+			models$interaction[i]
+		} else {
+			hit
+		}
 	})
 }
 
@@ -372,24 +405,64 @@ model_modifier_terms <- function(models) {
 #' @noRd
 realize_interaction_effects <- function(x, selection) {
 	models <- selection$models
-	modsByModel <- model_modifier_terms(models)
-	keep <- lengths(modsByModel) > 0
-	models <- models[keep, , drop = FALSE]
-	modsByModel <- modsByModel[keep]
-	adj <- selection$adjustment_index[keep]
-	if (!nrow(models)) {
-		stop("`add_interaction()` needs models with declared modifier terms.",
-				 call. = FALSE)
-	}
+	adj <- selection$adjustment_index
 	requested <- if (is.null(x@selection$terms)) character() else
 		names(selection_input(x@selection$terms))
 	if (length(requested)) {
 		keep <- models$exposure %in% requested
 		models <- models[keep, , drop = FALSE]
-		modsByModel <- modsByModel[keep]
 		adj <- adj[keep]
 	}
 	if (!nrow(models)) stop("No selected exposure has interaction effects.", call. = FALSE)
+	modsByModel <- model_modifier_terms(models)
+	bare <- lengths(modsByModel) == 0
+	if (all(bare)) {
+		stop("`add_interaction()` needs models with declared modifier terms.",
+				 call. = FALSE)
+	}
+	# A model with no modifier has no conditional effect to show. On a bare
+	# mesa it is set aside with a message (the unadjusted rung of a ladder is
+	# the usual case); a rung or exposure the user *asked for* by name is
+	# refused instead, since dropping it quietly left an "Unadjusted" label
+	# absent from the table with nothing to say so
+	if (any(bare)) {
+		bareRungs <- sort(unique(adj[bare]))
+		askedRungs <- suppressWarnings(as.integer(names(selection$adjustment_labels)))
+		askedExposures <- requested
+		refused <- intersect(bareRungs, askedRungs)
+		refusedExposures <- intersect(unique(models$exposure[bare]), askedExposures)
+		if (length(refused) || length(refusedExposures)) {
+			stop(
+				if (length(refused)) {
+					paste0(
+						"Adjustment set(s) ",
+						paste0(refused, " (`",
+									 adjustment_labels(refused, selection$adjustment_labels),
+									 "`)", collapse = ", "),
+						" carry no interaction term for the exposure"
+					)
+				} else {
+					paste0(
+						"Exposure(s) ", paste0("`", refusedExposures, "`", collapse = ", "),
+						" declare no modifier (`.i()`)"
+					)
+				},
+				", so `add_interaction()` has no conditional effect to show there. ",
+				"Choose rungs that include the modifier with `select_adjustment()` ",
+				"(`adjustment_sets()` lists each set's covariates), or exposures ",
+				"with one via `select_terms()`.",
+				call. = FALSE
+			)
+		}
+		message(
+			"Setting aside ", sum(bare), " model(s) with no interaction term ",
+			"(adjustment set(s) ", paste(bareRungs, collapse = ", "),
+			"); `add_interaction()` shows conditional effects only."
+		)
+		models <- models[!bare, , drop = FALSE]
+		modsByModel <- modsByModel[!bare]
+		adj <- adj[!bare]
+	}
 
 	vars <- unique(c(models$exposure, unlist(modsByModel)))
 	meta <- resolve_term_metadata(x@mdl_tbl, stats::setNames(as.list(vars), vars))
@@ -422,6 +495,18 @@ realize_interaction_effects <- function(x, selection) {
 				est$conf_low <- exp(est$conf_low)
 				est$conf_high <- exp(est$conf_high)
 			}
+			# A categorical exposure gets its reference level as a contrast column
+			# too, so the table names what the odds ratios are against instead of
+			# leaving it to the caption; the cells render as the reference text
+			est$is_reference <- FALSE
+			if ("exposure_level" %in% names(est)) {
+				refLevel <- meta$reference[match(model$exposure, meta$variable)]
+				refRows <- est[!duplicated(est$level), , drop = FALSE]
+				refRows$exposure_level <- refLevel
+				refRows$estimate <- refRows$conf_low <- refRows$conf_high <- NA_real_
+				refRows$is_reference <- TRUE
+				est <- dplyr::bind_rows(refRows, est)
+			}
 			contrast <- if ("exposure_level" %in% names(est)) {
 				as.character(est$exposure_level)
 			} else rep(NA_character_, nrow(est))
@@ -437,9 +522,10 @@ realize_interaction_effects <- function(x, selection) {
 				modifier = modifier, modifier_label = modifierLabel,
 				modifier_level = as.character(est$level),
 				modifier_level_label = as.character(est$level),
-				stratum = model$strata, stratum_level = model$level,
+				stratum = model$strata, stratum_label = model$strata,
+				stratum_level = model$level, stratum_level_label = model$level,
 				subset = model$subset, dataset = model$data_id,
-				family = model$family, is_reference = FALSE,
+				family = model$family, is_reference = est$is_reference,
 				estimate = est$estimate, conf_low = est$conf_low,
 				conf_high = est$conf_high, p_value = est$p_value,
 				nobs = est$nobs, exponentiated = isTRUE(expFlag[i]),
@@ -448,7 +534,7 @@ realize_interaction_effects <- function(x, selection) {
 				contrast_order = ifelse(is.na(contrast), 1L,
 					match(contrast, unique(contrast))),
 				adjustment_order = as.integer(adj[i]), modifier_order = j,
-				modifier_level_order = seq_len(nrow(est)),
+				modifier_level_order = match(est$level, unique(est$level)),
 				stratum_order = match(na_to_blank(model$level),
 					unique(na_to_blank(models$level))),
 				model_order = i, row.names = NULL, stringsAsFactors = FALSE
@@ -468,43 +554,39 @@ adjustment_labels <- function(index, labels) {
 }
 
 #' Relabel every semantic dimension before measures/layout
+#'
+#' A name that matches a term, modifier, or stratum relabels that dimension
+#' when the value is one string, and relabels its levels in order when the
+#' value is several; a name that matches a level relabels the level wherever
+#' it appears.
 #' @keywords internal
 #' @noRd
 apply_effect_labels <- function(effects, relabels) {
+	pairs <- c(term = "contrast", modifier = "modifier_level",
+		stratum = "stratum_level")
 	for (nm in names(relabels)) {
-		value <- relabels[[nm]]
+		value <- as.character(relabels[[nm]])
 		if (nm %in% effects$outcome && length(value) == 1) {
-			effects$outcome_label[effects$outcome == nm] <- as.character(value)
+			effects$outcome_label[effects$outcome == nm] <- value
 		}
-		if (nm %in% effects$term) {
+		for (dim in names(pairs)) {
+			hit <- !is.na(effects[[dim]]) & effects[[dim]] == nm
+			if (!any(hit)) next
+			lvl <- pairs[[dim]]
 			if (length(value) == 1) {
-				effects$term_label[effects$term == nm] <- as.character(value)
+				effects[[paste0(dim, "_label")]][hit] <- value
 			} else {
-				levels <- unique(stats::na.omit(effects$contrast[effects$term == nm]))
-				for (i in seq_along(levels)) if (i <= length(value)) {
-					effects$contrast_label[effects$term == nm &
-						effects$contrast == levels[i]] <- as.character(value[i])
+				levels <- unique(stats::na.omit(effects[[lvl]][hit]))
+				for (i in seq_len(min(length(levels), length(value)))) {
+					effects[[paste0(lvl, "_label")]][hit & effects[[lvl]] == levels[i]] <-
+						value[i]
 				}
 			}
 		}
-		if (nm %in% effects$modifier) {
-			if (length(value) == 1) {
-				effects$modifier_label[effects$modifier == nm] <- as.character(value)
-			} else {
-				levels <- unique(stats::na.omit(
-					effects$modifier_level[effects$modifier == nm]
-				))
-				for (i in seq_along(levels)) if (i <= length(value)) {
-					effects$modifier_level_label[effects$modifier == nm &
-						effects$modifier_level == levels[i]] <- as.character(value[i])
-				}
-			}
+		for (lvl in pairs) {
+			at <- !is.na(effects[[lvl]]) & effects[[lvl]] == nm
+			effects[[paste0(lvl, "_label")]][at] <- value[1]
 		}
-		# A bare value can relabel either kind of level.
-		effects$contrast_label[!is.na(effects$contrast) & effects$contrast == nm] <-
-			as.character(value[1])
-		effects$modifier_level_label[!is.na(effects$modifier_level) &
-			effects$modifier_level == nm] <- as.character(value[1])
 	}
 	effects
 }
@@ -523,7 +605,7 @@ effect_conditions <- function(effects) {
 		)
 	}
 	rows[[1]] <- add("stratum", effects$stratum, effects$stratum_level,
-		effects$stratum, effects$stratum_level, effects$stratum_order)
+		effects$stratum_label, effects$stratum_level_label, effects$stratum_order)
 	rows[[2]] <- add("modifier", effects$modifier, effects$modifier_level,
 		effects$modifier_label, effects$modifier_level_label,
 		effects$modifier_level_order)
@@ -547,7 +629,8 @@ measure_dimensions <- function() {
 		"model", "outcome", "outcome_label", "term", "term_label", "contrast",
 		"contrast_label", "adjustment", "adjustment_label", "modifier",
 		"modifier_label", "modifier_level", "modifier_level_label", "stratum",
-		"stratum_level", "subset", "dataset"
+		"stratum_label", "stratum_level", "stratum_level_label", "subset",
+		"dataset"
 	)
 }
 
@@ -678,7 +761,7 @@ realize_data_measures <- function(x, effects) {
 		events <- as.numeric(py$event)
 		personTime <- as.numeric(py$pyears) / config$person_years
 		rate <- events / personTime
-		hit <- semantic_context_match(effects, ctx, contextDims)
+		hit <- semantic_key(effects, contextDims) == semantic_key(ctx, contextDims)[1]
 		base <- effects[hit, , drop = FALSE]
 		# Data statistics are invariant to model adjustment. Keep one semantic
 		# anchor per term contrast/condition and deliberately erase model grain so
@@ -887,7 +970,14 @@ materialize_effect_group <- function(x, effects, measures, config) {
 materialize_scalar_group <- function(x, effects, measures, config) {
 	stat <- switch(config$id, p = "p_value", n = "n", events = "events", rate = "rate")
 	m <- group_base(measures, stat)
-	if (!nrow(m)) return(empty_group_frame())
+	if (!nrow(m)) {
+		out <- data.frame(effect_id = character(), stringsAsFactors = FALSE)
+		for (nm in measure_dimensions()) out[[nm]] <- character()
+		out$adjustment <- integer()
+		out$value <- I(list())
+		out$format <- I(list())
+		return(out)
+	}
 	format <- switch(config$id,
 		p = list(fmt = "p", digits = 3L, pattern = "{p_value}"),
 		n = list(fmt = "count", digits = 0L, pattern = "{n}"),
@@ -983,17 +1073,6 @@ group_rows <- function(base, id, subgroup, label, grain, renderer, type,
 
 #' @keywords internal
 #' @noRd
-empty_group_frame <- function() {
-	out <- data.frame(effect_id = character(), stringsAsFactors = FALSE)
-	for (nm in measure_dimensions()) out[[nm]] <- character()
-	out$adjustment <- integer()
-	out$value <- I(list())
-	out$format <- I(list())
-	out
-}
-
-#' @keywords internal
-#' @noRd
 group_label_override <- function(x, id, default) {
 	value <- x@labels$columns[[id]]
 	if (is.null(value)) default else as.character(value)
@@ -1018,13 +1097,6 @@ model_identity_key <- function(data_id, model_call, outcome, exposure,
 semantic_key <- function(data, fields) {
 	if (!length(fields)) return(rep("", nrow(data)))
 	do.call(paste, c(lapply(data[fields], na_to_blank), sep = "\r"))
-}
-
-#' @keywords internal
-#' @noRd
-semantic_context_match <- function(data, context, fields) {
-	wanted <- semantic_key(context, fields)[1]
-	semantic_key(data, fields) == wanted
 }
 
 #' @keywords internal

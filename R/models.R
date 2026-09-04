@@ -127,11 +127,11 @@ mdl.lm <- function(x = unspecified(),
 	# Get parameter information
 	# None of these values are exponentiated
 	# This must be done at the end through an additional function
-	pe <- possible_tidy(x)
+	pe <- my_tidy(x)
 
 	# Get model information
 	si <-
-		possible_glance(x) |>
+		my_glance(x) |>
 		as.list()
 
 	new_model_from_fit(
@@ -291,7 +291,7 @@ new_model_from_fit <- function(x,
 		}
 	}, error = function(e) NA_character_)
 
-	# `possible_tidy()` falls back to a scalar `NA` when tidying fails; the
+	# `my_tidy()` falls back to a scalar `NA` when tidying fails; the
 	# constructor needs a one-row frame in that case
 	if (!is.data.frame(parameterEstimates)) {
 		parameterEstimates <- tibble::tibble(term = NA_character_, estimate = NA)

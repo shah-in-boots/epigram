@@ -42,6 +42,35 @@ resolve_mdl_gt_layout <- function(x, effects, groups) {
 	preset <- mdl_gt_preset(x@layout$preset)
 	rows <- first_of(x@layout$rows, preset$rows)
 	columns <- first_of(x@layout$columns, preset$columns)
+	# A preset maps the dimensions its shape is about. Laid bare over an
+	# adjustment ladder or a set of strata it does not map, the rungs or
+	# strata would collide on one coordinate, so an undeclared layout takes
+	# them as the outer row bands. Rows, not columns: a table twice as wide
+	# does not fit a portrait page, and print is where these tables end up.
+	# A layout the user declared stays strict and errors at compile with the
+	# dimensions named
+	varies <- function(d) length(unique(stats::na.omit(effects[[d]]))) > 1
+	if (!isTRUE(x@layout$declared)) {
+		outer <- character()
+		if (!"adjustment" %in% c(rows, columns) && varies("adjustment")) {
+			outer <- c(outer, "adjustment")
+		}
+		if (!"stratum_level" %in% c(rows, columns) && varies("stratum_level")) {
+			outer <- c(outer, "stratum", "stratum_level")
+		}
+		rows <- c(outer, rows)
+	}
+	# An inner row dimension constant across every effect says the same thing
+	# on every row (`NDI quartile › Least Deprivation`); it leaves the stub
+	# and names the stubhead instead. The outermost dimension keeps its band
+	collapsed <- rows[-1][!vapply(rows[-1], varies, logical(1))]
+	collapsed <- collapsed[vapply(collapsed, function(d) {
+		v <- dimension_value(effects[1, , drop = FALSE], d)
+		!is.na(v) && nzchar(v)
+	}, logical(1))]
+	stubhead <- paste(vapply(collapsed, function(d) {
+		dimension_label(effects[1, , drop = FALSE], d)
+	}, character(1)), collapse = " / ")
 	active <- unique(groups$group_id)
 	registry <- mdl_gt_group_registry()
 	placements <- lapply(active, function(id) {
@@ -60,6 +89,7 @@ resolve_mdl_gt_layout <- function(x, effects, groups) {
 	columnOrder <- resolve_placement_order(active, placements, "columns", registry)
 	list(
 		preset = x@layout$preset, rows = rows, columns = columns,
+		collapsed_rows = collapsed, stubhead = stubhead,
 		placements = placements, row_group_order = rowOrder,
 		column_group_order = columnOrder,
 		group_labels = vapply(active, function(id) {
@@ -166,7 +196,8 @@ compile_mdl_gt_cells <- function(x, effects, groups, layout) {
 project_group_cell <- function(cell, effects, layout) {
 	id <- cell$group_id
 	p <- layout$placements[[id]]
-	rowParts <- semantic_path(cell, layout$rows, effects)
+	rowParts <- semantic_path(cell, layout$rows, effects,
+		skip = layout$collapsed_rows)
 	colParts <- semantic_path(cell, layout$columns, effects)
 	rowTrack <- "body"
 	if (!is.null(p$row_anchor)) {
@@ -192,7 +223,10 @@ project_group_cell <- function(cell, effects, layout) {
 
 	# A measure that stops at an outer row dimension is group-scoped. The
 	# renderer floats it over the concrete leaf rows in that band.
-	rowMissing <- semantic_missing(cell, layout$rows)
+	rowMissing <- vapply(layout$rows, function(d) {
+		v <- dimension_value(cell, d)
+		is.na(v) || !nzchar(v)
+	}, logical(1))
 	scope <- if (is.null(p$row_anchor) && p$axis != "rows" &&
 			any(rowMissing) && any(!rowMissing)) "group" else "row"
 	rowId <- if (scope == "row") path_id(rowParts$keys, "row") else NA_character_
@@ -230,12 +264,15 @@ project_group_cell <- function(cell, effects, layout) {
 
 #' @keywords internal
 #' @noRd
-semantic_path <- function(cell, dimensions, effects) {
+semantic_path <- function(cell, dimensions, effects, skip = character()) {
 	keys <- labels <- character()
 	for (dimension in dimensions) {
 		value <- dimension_value(cell, dimension)
 		if (is.na(value) || !nzchar(value)) next
 		keys <- c(keys, paste0(dimension, "=", value))
+		# A collapsed dimension keeps its key -- the band id stays complete --
+		# and only drops out of the displayed path
+		if (dimension %in% skip) next
 		labels <- c(labels, dimension_label(cell, dimension))
 	}
 	list(keys = keys, labels = labels)
@@ -270,20 +307,11 @@ dimension_label <- function(cell, dimension) {
 		outcome = "outcome_label", term = "term_label",
 		contrast = "contrast_label", adjustment = "adjustment_label",
 		modifier = "modifier_label", modifier_level = "modifier_level_label",
-		stratum = "stratum", stratum_level = "stratum_level", subset = "subset",
-		dataset = "dataset", model = "model"
+		stratum = "stratum_label", stratum_level = "stratum_level_label",
+		subset = "subset", dataset = "dataset", model = "model"
 	)
 	value <- cell[[column]]
 	if (!length(value) || is.na(value)) "" else as.character(value)
-}
-
-#' @keywords internal
-#' @noRd
-semantic_missing <- function(cell, dimensions) {
-	vapply(dimensions, function(d) {
-		v <- dimension_value(cell, d)
-		is.na(v) || !nzchar(v)
-	}, logical(1))
 }
 
 #' @keywords internal
@@ -333,11 +361,22 @@ column_sort_key <- function(cell, layout, group, effects) {
 	if (!length(groupOrder) || is.na(groupOrder)) {
 		groupOrder <- unname(layout$column_group_order["body"])
 	}
-	# Standalone coarse groups (N) use their registry order at the root. Groups
-	# carrying semantic columns sort within those dimensions.
+	# Standalone coarse groups (N, a floating P) carry no column dimension and
+	# sit before or after the body's columns by their placement order; every
+	# standalone group used to sort ahead of the body, so P for interaction
+	# led the odds ratios it tested. Groups carrying semantic columns sort
+	# within those dimensions
+	bodyOrder <- unname(layout$column_group_order["body"])
 	if (!length(orders) || all(is.infinite(orders))) {
-		return(c(groupOrder, rep(Inf, length(orders))))
+		return(c(if (groupOrder < bodyOrder) 0 else 200, groupOrder,
+			rep(Inf, length(orders))))
 	}
+	# A group that carries some column dimensions but not the inner ones -- N
+	# under an adjustment spanner, with no contrast -- sits at the near edge of
+	# the dimensions it lacks: before the body's columns when its placement is
+	# before the body, after them otherwise. Sorting its missing dimension as
+	# `Inf` put N after every contrast column regardless of placement
+	orders[is.infinite(orders)] <- if (groupOrder < bodyOrder) -Inf else Inf
 	c(100, orders, groupOrder)
 }
 

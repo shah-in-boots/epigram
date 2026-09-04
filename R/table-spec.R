@@ -281,7 +281,7 @@ new_mdl_gt_spec <- function(object, ...) {
 			"A `mdl_gt` needs fitted models, but none of the ", nrow(object),
 			" row(s) are fitted. Fit formulas with ",
 			"`fit(..., raw = FALSE)` first",
-			if (any(status == "failed")) " (`model_failures()` shows why some failed)",
+			if (any(status == "failed")) " (`model_diagnostics()` shows why some failed)",
 			".",
 			call. = FALSE
 		)
@@ -651,7 +651,17 @@ place_cells <- function(x, ..., axis = c("columns", "rows", "body"),
 
 	validate_class(x, "mdl_gt")
 	axis <- match.arg(axis)
-	ids <- collect_cell_group_ids(...)
+	# Ids come as bare names or as character vectors
+	caller <- parent.frame()
+	ids <- unique(unlist(lapply(as.list(substitute(list(...)))[-1], function(expr) {
+		if (is.symbol(expr)) return(as.character(expr))
+		value <- eval(expr, envir = caller)
+		if (!is.character(value)) {
+			stop("Cell-group ids must be bare names or character vectors.",
+					 call. = FALSE)
+		}
+		value
+	}), use.names = FALSE))
 	if (!length(ids)) {
 		stop("`place_cells()` needs at least one cell-group id.", call. = FALSE)
 	}
@@ -704,24 +714,6 @@ place_cells <- function(x, ..., axis = c("columns", "rows", "body"),
 		names(x@layout$placements)]
 	x@layout$placements <- x@layout$placements[knownPlacements]
 	x
-}
-
-#' @keywords internal
-#' @noRd
-collect_cell_group_ids <- function(...) {
-	exprs <- as.list(substitute(list(...)))[-1]
-	if (!length(exprs)) return(character())
-	caller <- parent.frame()
-	ids <- unlist(lapply(exprs, function(expr) {
-		if (is.symbol(expr)) return(as.character(expr))
-		value <- eval(expr, envir = caller)
-		if (!is.character(value)) {
-			stop("Cell-group ids must be bare names or character vectors.",
-					 call. = FALSE)
-		}
-		value
-	}), use.names = FALSE)
-	unique(ids)
 }
 
 #' @keywords internal

@@ -95,3 +95,15 @@ test_that("the survival presentation composes statistic rows and effect body", {
 	expect_true(any(dat$row_label == "Model 1"))
 	expect_match(gt::as_raw_html(g), "Rate difference")
 })
+
+test_that("a non-finite interval renders as the missing text, not as a magnitude", {
+	# A separated logistic fit exponentiates to an interval reaching `Inf`;
+	# the estimate beside it is a finite but meaningless number
+	value <- list(estimate = 4857318.63, conf_low = 0, conf_high = Inf)
+	format <- list(fmt = "number", digits = 2,
+								 pattern = "{estimate} ({conf_low}, {conf_high})")
+	expect_equal(format_cell(value, format, "—"), "—")
+	# A finite interval is untouched
+	value$conf_high <- 12.5
+	expect_equal(format_cell(value, format, "—"), "4857318.63 (0.00, 12.50)")
+})

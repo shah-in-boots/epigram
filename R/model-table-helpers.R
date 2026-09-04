@@ -232,11 +232,18 @@ format.mdl_tbl <- function(x, ..., n = 10) {
 	hints <- character()
 	if (any(status == "failed")) {
 		hints <- c(hints, paste0("# ", sum(status == "failed"),
-														 " model(s) failed: `model_failures()` shows why"))
+														 " model(s) failed: `model_diagnostics()` shows why"))
 	}
 	if (any(status == "unfit")) {
 		hints <- c(hints, paste0("# ", sum(status == "unfit"),
 														 " formula(s) await `fit()`"))
+	}
+	nWarned <- sum(vapply(x$model_summary, function(s) {
+		is.list(s) && length(s$warnings) > 0
+	}, logical(1)))
+	if (nWarned > 0) {
+		hints <- c(hints, paste0("# ", nWarned,
+														 " model(s) fit with warnings: `model_diagnostics()` shows them"))
 	}
 	hints <- c(hints,
 						 "# `summary()` maps the fleet; `flatten_models()` extracts estimates")
@@ -315,7 +322,8 @@ summary.mdl_tbl <- function(object, ...) {
 	}
 
 	# Failures deserve their messages
-	fails <- model_failures(x)
+	diagnostics <- model_diagnostics(x)
+	fails <- diagnostics[diagnostics$status == "failed", , drop = FALSE]
 	if (nrow(fails) > 0) {
 		cat("", sep = "\n")
 		for (i in seq_len(nrow(fails))) {
@@ -372,8 +380,9 @@ summary.mdl_tbl <- function(object, ...) {
 #'   entirely, whatever the role — the way to set aside a mediator or a
 #'   collider before laying the rest out.
 #'
-#' Terms are given as bare names or strings, matched by exact identity —
-#' never by substring — and every requested value is checked against what
+#' Terms are given as bare names or strings (a variable holding a name is
+#' spliced in with `!!`, a vector of names with `!!!`), matched by exact
+#' identity — never by substring — and every requested value is checked against what
 #' the table holds, so a typo errors with the available values instead of
 #' silently keeping nothing. Each verb reports what it kept with a message,
 #' and they chain in any order. Ordinary `dplyr` verbs still work on the
@@ -779,8 +788,15 @@ method(adjustment_sets, mdl_gt) <- function(x, ...) {
 #'
 #' - `attach_data()`: attaches a dataset to the table for later recall
 #'
-#' - `model_failures()`: returns the models that were attempted but failed,
-#'   with their error messages
+#' - `model_diagnostics()`: one row per model with what its fit recorded --
+#'   the `status` (fitted, failed, or unfit), `nobs`, the number of `terms`,
+#'   how many coefficients were `aliased` (returned as `NA`) or `unbounded`
+#'   (a confidence limit at infinity, the signature of a separated logistic
+#'   fit), the `max_std_error`, the `warnings` [fit()] collected instead of
+#'   emitting (so a `glm.fit` warning raised on a background worker is kept
+#'   where it can be read back), and the `error` of a failed fit.
+#'   Convergence is not estimability: a separated `glm` converges with
+#'   `fit_status = TRUE`, and this is where that shows
 #'
 #' - `term_table()`: the terms behind the table, as a `tm` vector with their
 #'   causal roles
@@ -827,9 +843,9 @@ method(adjustment_sets, mdl_gt) <- function(x, ...) {
 #'
 #' @param ... Arguments to be passed to or from other methods
 #'
-#' @return `attach_data()` returns the modified `mdl_tbl`; `model_failures()`
-#'   returns a `tibble` with one row per failed model and its `error`
-#'   message; `term_table()` returns a `tm` vector; `formula_matrix()`
+#' @return `attach_data()` returns the modified `mdl_tbl`;
+#'   `model_diagnostics()` returns a `tibble` with one row per model and the
+#'   columns described above; `term_table()` returns a `tm` vector; `formula_matrix()`
 #'   returns a `tibble`; `model_data()` returns a named `list` of data frames
 #'   (or a single `data.frame` when `name` is given).
 #'
@@ -915,20 +931,65 @@ attach_data <- function(x, data, name = NULL, ...) {
 
 #' @rdname model_table_helpers
 #' @export
-model_failures <- function(x, ...) {
+model_diagnostics <- function(x, ...) {
 
 	validate_class(x, "mdl_tbl")
 
-	status <- model_table_status(x)
-	err <- vapply(x$model_summary, function(s) {
-		if (is.list(s) && !is.null(s$error)) {
-			as.character(s$error)[1]
-		} else {
-			NA_character_
-		}
-	}, character(1))
+	# Each fit's own record: the tidy coefficients and the glance summary. A
+	# failed or unfit row carries `NA` in place of both, so every read guards
+	# on shape. `aliased` and `unbounded` are counts, not judgements: they
+	# need no threshold, and `max_std_error` is there for whoever wants one.
+	# A coefficient is unbounded when a limit sits at infinity or the
+	# likelihood profile never found one (`NA` beside a finite estimate --
+	# `confint()` on a separated `glm` does this) in a model whose other
+	# coefficients have limits; an engine that reports no interval at all
+	# leaves every bound `NA` and counts none
+	per <- lapply(seq_len(nrow(x)), function(i) {
+		p <- x$model_parameters[[i]]
+		s <- x$model_summary[[i]]
+		hasP <- is.data.frame(p)
+		# `[[` rather than `$`: a tibble warns on a column it does not carry,
+		# and an engine may tidy without intervals
+		est <- if (hasP) p[["estimate"]] else NULL
+		se <- if (hasP) p[["std_error"]] else NULL
+		lo <- if (hasP) p[["conf_low"]] else NULL
+		hi <- if (hasP) p[["conf_high"]] else NULL
+		list(
+			nobs = if (is.list(s) && length(s$nobs) == 1 && !is.na(s$nobs)) {
+				as.integer(s$nobs)
+			} else {
+				NA_integer_
+			},
+			terms = if (hasP) nrow(p) else NA_integer_,
+			aliased = if (hasP) sum(is.na(est)) else NA_integer_,
+			unbounded = if (!hasP) {
+				NA_integer_
+			} else if (!any(is.finite(lo) | is.finite(hi))) {
+				0L
+			} else {
+				sum(is.infinite(lo) | is.infinite(hi) |
+					(!is.na(est) & (is.na(lo) | is.na(hi))))
+			},
+			max_std_error = if (length(se) && any(!is.na(se))) {
+				max(se, na.rm = TRUE)
+			} else {
+				NA_real_
+			},
+			warnings = if (is.list(s) && length(s$warnings) > 0) {
+				as.character(s$warnings)
+			} else {
+				character()
+			},
+			error = if (is.list(s) && !is.null(s$error)) {
+				as.character(s$error)[1]
+			} else {
+				NA_character_
+			}
+		)
+	})
+	pull <- function(field, type) vapply(per, `[[`, type, field)
 
-	out <- tibble::tibble(
+	tibble::tibble(
 		name = x$name,
 		model_call = x$model_call,
 		formula_call = x$formula_call,
@@ -936,10 +997,15 @@ model_failures <- function(x, ...) {
 		strata = x$strata,
 		level = x$level,
 		subset = x$subset,
-		error = err
+		status = model_table_status(x),
+		nobs = pull("nobs", integer(1)),
+		terms = pull("terms", integer(1)),
+		aliased = pull("aliased", integer(1)),
+		unbounded = pull("unbounded", integer(1)),
+		max_std_error = pull("max_std_error", numeric(1)),
+		warnings = lapply(per, `[[`, "warnings"),
+		error = pull("error", character(1))
 	)
-
-	out[status == "failed", , drop = FALSE]
 
 }
 
@@ -1018,7 +1084,7 @@ model_data <- function(x, name = NULL, ...) {
 #' A `mdl_tbl` object can be flattened to its specific parameters, their
 #' estimates, and model-level summary statistics -- one row per model term.
 #' Models that were not fit (or failed) are dropped with a message; see
-#' [model_failures()] for why they failed. This relies on the [broom::tidy()]
+#' [model_diagnostics()] for why they failed. This relies on the [broom::tidy()]
 #' output stored when the models were made.
 #'
 #' # Exponentiation
@@ -1066,7 +1132,7 @@ flatten_models <- function(x, exponentiate = NULL, which = NULL, ...) {
 			"Dropping ",
 			paste(c(
 				if (nFailed > 0) {
-					paste0(nFailed, " failed model(s) (see `model_failures()`)")
+					paste0(nFailed, " failed model(s) (see `model_diagnostics()`)")
 				},
 				if (nUnfit > 0) paste0(nUnfit, " unfit formula(s)")
 			), collapse = " and "),

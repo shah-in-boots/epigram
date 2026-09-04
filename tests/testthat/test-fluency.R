@@ -52,9 +52,20 @@ test_that("strata can be added and removed fluently", {
 	m <- fit(f2, .fn = lm, data = mtcars, raw = FALSE)
 	expect_length(m, 2)
 
-	# Existing covariates can be promoted to strata
-	f3 <- add_strata(f, hp)
+	# Existing covariates can be promoted to strata, and the family says so:
+	# every adjustment set changes when a covariate becomes a stratum, which
+	# a caption written earlier does not know
+	expect_message(f3 <- add_strata(f, hp), "`hp` was a predictor")
 	expect_equal(attr(f3, "termTable")$role[2:3], c("exposure", "strata"))
+	# A stratum already in place is not announced again
+	expect_no_message(add_strata(f3, hp))
+
+	# A variable holding the name is spliced in with `!!`, a vector with `!!!`;
+	# a bare `v` would be taken as a term called `v`
+	v <- "am"
+	expect_equal(add_strata(f, !!v), add_strata(f, am))
+	vs <- c("am", "vs")
+	expect_equal(add_strata(f, !!!vs), add_strata(f, am, vs))
 
 	# And removed again
 	f4 <- remove_strata(f2, am)

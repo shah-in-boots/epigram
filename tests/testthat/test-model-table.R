@@ -488,3 +488,29 @@ test_that("model table can be filtered", {
 
 	expect_length(obj$outcome, 2)
 })
+
+test_that("filtering keeps the term definitions the remaining rows point at", {
+	d <- mtcars
+	d$cyl <- factor(d$cyl)
+	d$am <- factor(d$am)
+	# `am` is the first family's modifier and the second's exposure, so the
+	# combined term table defines it twice and the second family's cells
+	# point at the second definition. Filtering to that family used to keep
+	# the wrong definition and leave the ordinal pointing past the table
+	mt <- c(
+		fmls(mpg ~ .x(hp) + .i(am) + cyl),
+		fmls(mpg ~ .x(am) + .i(cyl) + hp)
+	) |>
+		fit(.fn = lm, data = d) |>
+		model_table(data = d)
+	sub <- dplyr::filter(mt, exposure == "am")
+	proxy <- vctrs::vec_proxy(term_table(sub))
+	expect_equal(proxy$role[proxy$term == "am"], "exposure")
+	expect_equal(proxy$role[proxy$term == "cyl"], "interaction")
+	expect_equal(proxy$role[proxy$term == "hp"], "predictor")
+	# And the formulas still resolve, which is what `mdl_gt()` needs
+	expect_equal(
+		unname(as.character(formula(model_table_formulas(sub)))),
+		"mpg ~ am + cyl + am:cyl + hp"
+	)
+})

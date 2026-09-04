@@ -74,9 +74,10 @@ the family intact
 that \code{\link[=fit]{fit()}} will apply, fitting the family once per subset
 }
 
-Terms may be given as bare names or strings. For \code{swap_outcome()}, a
-two-sided formula \code{old ~ new} swaps a specific outcome; a bare name is
-allowed when the family has a single outcome.
+Terms may be given as bare names or strings; a variable holding a name is
+spliced in with \verb{!!} (\code{add_strata(f, !!v)}), a vector of names with \verb{!!!}.
+For \code{swap_outcome()}, a two-sided formula \code{old ~ new} swaps a specific
+outcome; a bare name is allowed when the family has a single outcome.
 }
 \examples{
 f <- fmls(mpg ~ .x(wt) + hp)
@@ -84,5 +85,9 @@ f |>
   add_strata(am) |>
   add_terms(cyl) |>
   subset_data(disp > 100)
+
+# A name held in a variable is spliced in
+v <- "am"
+add_strata(f, !!v)
 
 }

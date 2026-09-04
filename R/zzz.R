@@ -18,15 +18,6 @@ utils::globalVariables(c(
 ))
 
 .onLoad <- function(libname, pkgname) {
-	if (!exists("possible_tidy")) {
-		possible_tidy <-
-			purrr::possibly(my_tidy, otherwise = NA, quiet = FALSE)
-	}
-	if (!exists("possible_glance")) {
-		possible_glance <-
-			purrr::possibly(my_glance, otherwise = NA, quiet = FALSE)
-	}
-
 	# S7 methods registered on generics owned elsewhere -- base's `print()` and
 	# `format()`, and any S7 generic another package might import -- are wired up
 	# at load time here. Methods on recast's own S7 generics self-register, so this

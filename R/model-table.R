@@ -16,8 +16,8 @@
 #' The table is the working surface of an analysis. Its print method
 #' summarizes what has been fit, what failed, and what is still waiting;
 #' [summary()] maps the fleet; [flatten_models()] pulls out estimates;
-#' [model_failures()] explains failures. See [model_table_helpers] for the
-#' full set.
+#' [model_diagnostics()] explains failures and shows which fits converged
+#' without being estimable. See [model_table_helpers] for the full set.
 #'
 #' @details
 #'
@@ -272,15 +272,21 @@ construct_table_from_models <- function(x, ...) {
 	fl <- unname(sapply(mf, as.character, USE.NAMES = FALSE))
 	num <- formula_term_count(fl)
 
-	# The formula matrix rows, parallel to the models
-	fmMat <-
-		do.call(what = rbind, args = lapply(mf, vec_proxy)) |>
-		vec_data()
-
 	# Terms must be combined into a term table for later look up
 	tmTab <-
 		do.call(what = rbind, args = lapply(tl, vec_data)) |>
 		unique()
+
+	# The formula matrix rows, parallel to the models, each re-pointed from
+	# its own family's term table at the combined one (models fit from
+	# different families may define a shared term at different ordinals)
+	fmMat <-
+		do.call(what = rbind, args = lapply(mf, function(f) {
+			remap_definition_ordinals(
+				vec_data(vec_proxy(f)), from = attr(f, "termTable"), to = tmTab
+			)
+		})) |>
+		vec_data()
 
 	out <- role_term(tl, "outcome")
 	exp <- role_term(tl, "exposure")
@@ -617,36 +623,27 @@ df_reconstruct <- function(x, to) {
 	fmMat <- fmMat[, colSums(fmMat, na.rm = TRUE) > 0, drop = FALSE]
 	rownames(fmMat) <- NULL
 
-	# Term table: special roles are kept only when x's rows still claim them;
-	# plain covariates are kept when some remaining formula uses them beyond
-	# its own outcome; random effects are meta terms (absent from the matrix
-	# and the columns), so they are carried whole
+	# Term table: keep exactly the definitions the remaining rows point at.
+	# Each matrix cell is an ordinal naming which definition of its term that
+	# formula reads (`resolve_formula_row()`), so a term the table defines
+	# twice -- `race` as one family's exposure and another's modifier -- keeps
+	# only the definition some remaining row still uses. Pruning by role and
+	# membership alone kept the other family's definition when the bare term
+	# was merely a covariate here, and dropped a definition an ordinal still
+	# pointed at, which surfaced as `subscript out of bounds` deep in
+	# `mdl_gt()`. Random effects are recorded in the matrix like any other
+	# term, so they follow the same rule
 	tmTab <- attr(src, "termTable")
-	outs <- stats::na.omit(unique(x$outcome))
-	exps <- stats::na.omit(unique(x$exposure))
-	meds <- stats::na.omit(unique(x$mediator))
-	ints <- stats::na.omit(unique(x$interaction))
-	stas <- stats::na.omit(unique(x$strata))
-	cols <- names(fmMat)
-	specialRoles <- c("outcome", "exposure", "mediator", "interaction", "strata")
-
-	usedBeyondOutcome <- vapply(cols, function(term) {
-		any(fmMat[[term]] > 0 & (is.na(x$outcome) | x$outcome != term))
-	}, logical(1))
-	rhsCols <- cols[usedBeyondOutcome]
-
-	keep <-
-		(tmTab$role == "outcome" & tmTab$term %in% outs) |
-		(tmTab$role == "exposure" & tmTab$term %in% exps) |
-		(tmTab$role == "mediator" & tmTab$term %in% meds) |
-		(tmTab$role == "interaction" &
-		 	(tmTab$term %in% ints | tmTab$term %in% rhsCols)) |
-		(tmTab$role == "strata" & tmTab$term %in% stas) |
-		(tmTab$role == "random") |
-		(!tmTab$role %in% c(specialRoles, "random") & tmTab$term %in% rhsCols)
-
-	newTab <- tmTab[keep, , drop = FALSE]
+	referenced <- rep(FALSE, nrow(tmTab))
+	for (term in names(fmMat)) {
+		definitions <- which(tmTab$term == term)
+		cells <- fmMat[[term]]
+		ordinals <- unique(cells[!is.na(cells) & cells >= 1])
+		referenced[definitions[ordinals[ordinals <= length(definitions)]]] <- TRUE
+	}
+	newTab <- tmTab[referenced, , drop = FALSE]
 	rownames(newTab) <- NULL
+	fmMat <- remap_definition_ordinals(fmMat, from = tmTab, to = newTab)
 
 	# Datasets: those x's rows reference, plus any attached without being
 	# referenced by the source at all (a deliberate `attach_data()`)
@@ -684,17 +681,22 @@ mdl_tbl_ptype2 <- function(x, y, ..., x_arg = "", y_arg = "") {
 
 	# The prototype's attributes hold both tables' rows so that, when
 	# `vec_rbind()`/`vec_c()` restores the combined rows to this prototype, the
-	# formula matrix stays parallel to the table rows
+	# formula matrix stays parallel to the table rows. Each side's cells are
+	# re-pointed at the merged term table first: a cell is an ordinal naming
+	# which definition of its term the formula reads, and the merge may put
+	# the other table's definition of a shared term ahead of this one's
+	termTable <- merge_term_tables(attr(x, "termTable"), attr(y, "termTable"))
   new_model_table(
   	x = as.list(mdTab),
   	formulaMatrix = merge_formula_matrices(
-  		attr(x, "formulaMatrix"),
-  		attr(y, "formulaMatrix")
+  		remap_definition_ordinals(
+  			attr(x, "formulaMatrix"), from = attr(x, "termTable"), to = termTable
+  		),
+  		remap_definition_ordinals(
+  			attr(y, "formulaMatrix"), from = attr(y, "termTable"), to = termTable
+  		)
   	),
-  	termTable = merge_term_tables(
-  		attr(x, "termTable"),
-  		attr(y, "termTable")
-  	),
+  	termTable = termTable,
   	dataList = merge_data_lists(
   		attr(x, "dataList"),
   		attr(y, "dataList")
@@ -712,7 +714,10 @@ mdl_tbl_cast <- function(x, to, ..., x_arg = "", to_arg = "") {
 	# The cast keeps x's own formula rows (parity with x's models), widened to
 	# the union of terms; the term table and data list gain `to`'s context
 	# (issue #26: the data list must survive the cast)
-	xFm <- attr(x, "formulaMatrix")
+	termTable <- merge_term_tables(attr(x, "termTable"), attr(to, "termTable"))
+	xFm <- remap_definition_ordinals(
+		attr(x, "formulaMatrix"), from = attr(x, "termTable"), to = termTable
+	)
 	toFm <- attr(to, "formulaMatrix")
 	for (col in setdiff(names(toFm), names(xFm))) {
 		xFm[[col]] <- rep(0, nrow(xFm))
@@ -721,10 +726,7 @@ mdl_tbl_cast <- function(x, to, ..., x_arg = "", to_arg = "") {
 	new_model_table(
 		x = as.list(mdTab),
 		formulaMatrix = xFm,
-		termTable = merge_term_tables(
-			attr(x, "termTable"),
-			attr(to, "termTable")
-		),
+		termTable = termTable,
 		dataList = merge_data_lists(
 			attr(x, "dataList"),
 			attr(to, "dataList")

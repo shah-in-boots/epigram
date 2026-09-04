@@ -50,8 +50,8 @@ roles, its fitting context (data, strata, subsets), and its results.
 The table is the working surface of an analysis. Its print method
 summarizes what has been fit, what failed, and what is still waiting;
 \code{\link[=summary]{summary()}} maps the fleet; \code{\link[=flatten_models]{flatten_models()}} pulls out estimates;
-\code{\link[=model_failures]{model_failures()}} explains failures. See \link{model_table_helpers} for the
-full set.
+\code{\link[=model_diagnostics]{model_diagnostics()}} explains failures and shows which fits converged
+without being estimable. See \link{model_table_helpers} for the full set.
 }
 \details{
 Along with the row-per-model data, three scalar attributes carry the

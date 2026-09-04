@@ -44,18 +44,6 @@
 	'I'
 )
 
-# Legacy list of directly-supported fitting functions. `fit()` no longer
-# gates on this (any fitting function or `{parsnip}` specification is
-# accepted); it remains for `mdl.character()` bookkeeping and messages.
-.models <- c(
-	'model_fit',
-	'lm',
-	'glm',
-	'coxph',
-	'lmer',
-	'glmer'
-)
-
 # Role-to-ANSI style map for terminal printing (see `format.tm()`)
 .role_color_styles <- c(
 	"outcome" = "col_yellow",

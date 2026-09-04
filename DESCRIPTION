@@ -41,7 +41,6 @@ Imports:
     tidyr,
     rlang,
     pillar,
-    purrr,
     ggplot2,
     gt,
     scales

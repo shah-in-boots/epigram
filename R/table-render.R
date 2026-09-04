@@ -33,7 +33,7 @@ as_gt <- S7::new_generic("as_gt", "x")
 # `@export`.
 method(as_gt, mdl_gt) <- function(x, ...) {
 	built <- build_mdl_gt(x)
-	render_cell_frame(built@cells, x)
+	render_cell_frame(built@cells, x, built@layout)
 }
 
 # The render stage -------------------------------------------------------------
@@ -50,7 +50,7 @@ method(as_gt, mdl_gt) <- function(x, ...) {
 #' `type = "plot"` cells -- so the frame itself stays plain data.
 #' @keywords internal
 #' @noRd
-render_cell_frame <- function(frame, spec) {
+render_cell_frame <- function(frame, spec, layout = NULL) {
 
 	missing_text <- first_of(spec@style$missing_text, "")
 	rows <- unique(frame[
@@ -116,7 +116,10 @@ render_cell_frame <- function(frame, spec) {
 		)
 		# Vertically centered on the band: the middle row when the group has an
 		# odd number of rows; with an even count, the row above the seam,
-		# bottom-aligned so the value floats on it
+		# bottom-aligned so the value floats on it. Print formats that drop
+		# vertical alignment (typst, Word via Quarto's table conversion) show
+		# the value on that row's baseline instead; a first-row placement was
+		# tried for them and rejected -- the float is the intended reading
 		even <- length(at) %% 2 == 0
 		visible <- at[ceiling(length(at) / 2)]
 		gsPlacements[[length(gsPlacements) + 1]] <- list(
@@ -126,6 +129,12 @@ render_cell_frame <- function(frame, spec) {
 	}
 
 	gtbl <- gt::gt(wide, rowname_col = "row_label", groupname_col = "row_group")
+	# A row dimension constant across the table names the stub instead of
+	# repeating on every row (see `resolve_mdl_gt_layout()`)
+	stubhead <- if (is.null(layout)) "" else first_of(layout$stubhead, "")
+	if (nzchar(stubhead)) {
+		gtbl <- gt::tab_stubhead(gtbl, label = stubhead)
+	}
 
 	# Spanners, innermost first so nested paths stack upward; a spanner covers
 	# each maximal run of consecutive columns sharing its path prefix
@@ -232,6 +241,17 @@ format_cell <- function(value, format, missing_text) {
 	if (length(value) == 0 || all(vapply(value, function(v) {
 		length(v) == 0 || is.na(v)
 	}, logical(1)))) {
+		return(missing_text)
+	}
+
+	# A non-finite statistic is a separated fit, not a number: an odds ratio
+	# whose interval runs to `Inf` because a cell of the cross-classification
+	# held no events. Printing `4857318.63 (0.00, Inf)` reports a plausible-
+	# looking magnitude that means nothing, so the whole cell is missing
+	nonFinite <- vapply(value, function(v) {
+		is.numeric(v) && length(v) == 1 && !is.na(v) && !is.finite(v)
+	}, logical(1))
+	if (any(nonFinite)) {
 		return(missing_text)
 	}
 

@@ -21,3 +21,4 @@
 ^\.gitmodules$
 ^mark$
 ^tools$
+^\.claude$

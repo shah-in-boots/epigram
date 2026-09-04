@@ -22,8 +22,8 @@ test_that("pre-specified models of type character can be made", {
 
 	x <- stats::lm(mpg ~ wt + hp, data = mtcars)
 	f <- stats::formula(x) |> fmls()
-	pe <- possible_tidy(x)
-	si <- possible_glance(x)
+	pe <- my_tidy(x)
+	si <- my_glance(x)
 	dn <- "mtcars"
 
 	m <- mdl.character(

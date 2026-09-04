@@ -352,9 +352,8 @@ methods::setOldClass(c("fmls", "vctrs_rcrd"))
 
 # SELF
 
-#' @keywords internal
-#' @noRd
-fmls_ptype2 <- function(x, y, ..., x_arg = "", y_arg = "") {
+#' @export
+vec_ptype2.fmls.fmls <- function(x, y, ..., x_arg = "", y_arg = "") {
 
 	# Creates a "empty" data frame with appropraite fields
 	newMatrix <- df_ptype2(x, y, ..., x_arg = x_arg, y_arg = y_arg)
@@ -477,9 +476,8 @@ c.fmls <- function(...) {
 	vec_c(...)
 }
 
-#' @keywords internal
-#' @noRd
-fmls_cast <- function(x, to, ..., x_arg = "", to_arg = "") {
+#' @export
+vec_cast.fmls.fmls <- function(x, to, ..., x_arg = "", to_arg = "") {
 
 	# Definitions merge quietly here: in a `c()` the ptype2 step has already
 	# reported any true conflicts
@@ -502,16 +500,6 @@ fmls_cast <- function(x, to, ..., x_arg = "", to_arg = "") {
 	new_fmls(newMatrix,
 					 termTable = newTmTab,
 					 instructions = combine_instructions(x, to))
-}
-
-#' @export
-vec_ptype2.fmls.fmls <- function(x, y, ...) {
-	fmls_ptype2(x, y, ...)
-}
-
-#' @export
-vec_cast.fmls.fmls <- function(x, to, ...) {
-	fmls_cast(x, to, ...)
 }
 
 # CHARACTER

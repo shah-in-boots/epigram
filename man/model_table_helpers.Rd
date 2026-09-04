@@ -3,7 +3,7 @@
 \name{model_table_helpers}
 \alias{model_table_helpers}
 \alias{attach_data}
-\alias{model_failures}
+\alias{model_diagnostics}
 \alias{term_table}
 \alias{term_table.mdl_tbl}
 \alias{term_table.fmls}
@@ -15,7 +15,7 @@
 \usage{
 attach_data(x, data, name = NULL, ...)
 
-model_failures(x, ...)
+model_diagnostics(x, ...)
 
 term_table(x, ...)
 
@@ -45,9 +45,9 @@ named list is returned)}
 \item{...}{Arguments to be passed to or from other methods}
 }
 \value{
-\code{attach_data()} returns the modified \code{mdl_tbl}; \code{model_failures()}
-returns a \code{tibble} with one row per failed model and its \code{error}
-message; \code{term_table()} returns a \code{tm} vector; \code{formula_matrix()}
+\code{attach_data()} returns the modified \code{mdl_tbl};
+\code{model_diagnostics()} returns a \code{tibble} with one row per model and the
+columns described above; \code{term_table()} returns a \code{tm} vector; \code{formula_matrix()}
 returns a \code{tibble}; \code{model_data()} returns a named \code{list} of data frames
 (or a single \code{data.frame} when \code{name} is given).
 }
@@ -58,8 +58,15 @@ These functions manage and interrogate a \code{mdl_tbl} object -- they are the
 working verbs of the notebook of models:
 \itemize{
 \item \code{attach_data()}: attaches a dataset to the table for later recall
-\item \code{model_failures()}: returns the models that were attempted but failed,
-with their error messages
+\item \code{model_diagnostics()}: one row per model with what its fit recorded --
+the \code{status} (fitted, failed, or unfit), \code{nobs}, the number of \code{terms},
+how many coefficients were \code{aliased} (returned as \code{NA}) or \code{unbounded}
+(a confidence limit at infinity, the signature of a separated logistic
+fit), the \code{max_std_error}, the \code{warnings} \code{\link[=fit]{fit()}} collected instead of
+emitting (so a \code{glm.fit} warning raised on a background worker is kept
+where it can be read back), and the \code{error} of a failed fit.
+Convergence is not estimability: a separated \code{glm} converges with
+\code{fit_status = TRUE}, and this is where that shows
 \item \code{term_table()}: the terms behind the table, as a \code{tm} vector with their
 causal roles
 \item \code{formula_matrix()}: the model-by-term membership matrix

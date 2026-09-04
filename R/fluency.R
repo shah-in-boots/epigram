@@ -144,9 +144,10 @@ set_data.fmls <- function(x, data, ...) {
 #' - `subset_data()`: record data-filtering instructions (e.g. `sex == "F"`)
 #'   that [fit()] will apply, fitting the family once per subset
 #'
-#' Terms may be given as bare names or strings. For `swap_outcome()`, a
-#' two-sided formula `old ~ new` swaps a specific outcome; a bare name is
-#' allowed when the family has a single outcome.
+#' Terms may be given as bare names or strings; a variable holding a name is
+#' spliced in with `!!` (`add_strata(f, !!v)`), a vector of names with `!!!`.
+#' For `swap_outcome()`, a two-sided formula `old ~ new` swaps a specific
+#' outcome; a bare name is allowed when the family has a single outcome.
 #'
 #' @param x A `fmls` object
 #'
@@ -168,6 +169,10 @@ set_data.fmls <- function(x, data, ...) {
 #'   add_strata(am) |>
 #'   add_terms(cyl) |>
 #'   subset_data(disp > 100)
+#'
+#' # A name held in a variable is spliced in
+#' v <- "am"
+#' add_strata(f, !!v)
 #'
 #' @name fluent_verbs
 NULL
@@ -196,6 +201,15 @@ add_strata.fmls <- function(x, ...) {
 
 	for (v in vars) {
 		if (v %in% tmTab$term) {
+			# Promoting a covariate changes every adjustment set in the family,
+			# which a caption written earlier does not know
+			was <- paste(unique(tmTab$role[tmTab$term == v]), collapse = "/")
+			if (was != "strata") {
+				message(
+					"`", v, "` was a ", was, " of this family; it now stratifies ",
+					"every formula instead, so the adjustment sets have changed."
+				)
+			}
 			tmTab$role[tmTab$term == v] <- "strata"
 			tmTab$side[tmTab$term == v] <- "meta"
 		} else {

@@ -73,7 +73,14 @@ test_that("unplaced varying dimensions fail with an actionable diagnostic", {
 		mdl_gt() |>
 		add_interaction() |>
 		add_estimates()
-	expect_error(inspect_mdl_gt(spec, "cells"), "stratum_level")
+	# A declared layout that leaves the varying stratum unplaced is refused
+	# with the dimension named; the bare mesa places it as the outer band
+	# itself (see test-table-build.R)
+	declared <- spec |>
+		modify_layout(rows = c("modifier", "modifier_level"),
+									columns = c("term", "contrast"))
+	expect_error(inspect_mdl_gt(declared, "cells"), "stratum_level")
+	expect_no_error(inspect_mdl_gt(spec, "cells"))
 
 	placed <- spec |>
 		modify_layout(

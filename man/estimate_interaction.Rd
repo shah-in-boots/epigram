@@ -19,14 +19,23 @@ estimate_interaction(object, exposure, interaction, conf_level = 0.95, ...)
 }
 \value{
 A \code{tibble} with one row per level of the interaction variable
-(the reference level first) and \code{n = 6} columns:
+(the reference level first) and eight columns:
 \itemize{
 \item estimate: the exposure's effect within the interaction level
 \item conf_low: lower bound of the confidence interval for the estimate
 \item conf_high: upper bound of the confidence interval for the estimate
 \item p_value: p-value for the overall interaction effect \emph{across levels}
 (the same value on every row)
-\item nobs: number of observations within the interaction level
+\item statistic: the test behind \code{p_value} -- the Wald chi-square when
+several interaction coefficients are tested jointly, and the
+coefficient's own statistic (z or t, as the engine reports it) when
+there is one
+\item df: the number of interaction coefficients the test spans, aliased
+ones excluded
+\item nobs: number of observations within the interaction level, counted
+on the rows the model was fit on (a stratified model's own stratum);
+\code{NA} for a model fit under a \code{\link[=subset_data]{subset_data()}} rule, whose rows are not
+recoverable from the attached data
 \item level: level of the interaction term
 }
 
@@ -59,16 +68,40 @@ The exposure may also be \strong{categorical}: its non-reference levels each
 carry their own coefficient (\code{exposureLEVEL}), so the within-level effect
 is derived per exposure level, and the returned tibble gains an
 \code{exposure_level} column naming the exposure contrast each row belongs to.
-A numeric (including binary 0/1) exposure keeps the six-column shape.
+A numeric (including binary 0/1) exposure keeps the eight-column shape.
+
+The interaction variable must be a factor or a numeric coded 0/1. The
+within-level effect is the exposure coefficient plus the level's
+interaction coefficient, which is the model's own contrast only under
+those codings; any other numeric modifier is refused, since there are no
+levels to condition on (\code{cut()} it into groups, or convert it to a
+factor, and refit).
 
 The \code{p_value} is the single across-levels test of interaction: with one
 interaction coefficient (a binary interaction) it is that coefficient's
 p-value; with several (a categorical interaction, a categorical exposure,
 or both) it is the joint Wald chi-square test of all the interaction
-coefficients against zero.
+coefficients against zero. \code{statistic} and \code{df} carry the test alongside
+it, so a table can say "joint Wald, 6 df" without recounting levels. The
+Wald test is known to understate the evidence when a fit is separated
+(Hauck and Donner 1977); \code{\link[=model_diagnostics]{model_diagnostics()}} shows which fits are. An
+interaction coefficient the model could not estimate (\code{NA}, from an empty
+cell of the exposure by interaction cross-classification) is left out of
+the joint test with its degree of freedom, and the within-level effect it
+would have formed is \code{NA}. So is
+the within-level effect of any cell that holds no observations of the
+exposure level or of the exposure's reference level: the model returns a
+finite coefficient there, but after aliasing it measures a different
+cell's contrast, and the remaining rows should be read knowing that the
+parametrization has shifted (refitting with the empty level dropped is
+the clean remedy).
 }
 \references{
 A. Figueiras, J. M. Domenech-Massons, and Carmen Cadarso, 'Regression models:
 calculating the confidence intervals of effects in the presence of
 interactions', Statistics in Medicine, 17, 2099-2105 (1998)
+
+W. W. Hauck and A. Donner, 'Wald's test as applied to hypotheses in logit
+analysis', Journal of the American Statistical Association, 72, 851-853
+(1977) \doi{10.1080/01621459.1977.10479969}
 }

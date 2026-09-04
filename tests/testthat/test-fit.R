@@ -28,8 +28,11 @@ test_that("`fmls` objects can be fitted", {
 	expect_s3_class(m2, "mdl")
 	expect_equal(field(m2, "dataArgs")[[1]]$strataVariable, "am")
 	expect_equal(field(m2, "dataArgs")[[1]]$dataName, "mtcars")
-	expect_equal(field(m2, "dataArgs")[[1]]$strataLevel, 1)
-	expect_equal(field(m2, "dataArgs")[[2]]$strataLevel, 0)
+	# Strata come in level order (sorted, or a factor's own), not in order of
+	# first appearance: `mtcars$am` starts with a 1, and the table's row bands
+	# should still read 0 then 1
+	expect_equal(field(m2, "dataArgs")[[1]]$strataLevel, 0)
+	expect_equal(field(m2, "dataArgs")[[2]]$strataLevel, 1)
 
 
 })
@@ -273,4 +276,36 @@ test_that("engine-native strata() conditions within one model at fit", {
 	# The engine absorbed the conditioning term; only `age` has a coefficient
 	expect_equal(mt$model_parameters[[1]]$term, "age")
 
+})
+
+test_that("warnings raised while fitting are recorded on the model, not lost", {
+	# Complete separation: `glm()` warns that fitted probabilities are 0 or 1
+	d <- data.frame(y = c(0, 0, 0, 1, 1, 1), z = 1:6)
+	# Nothing leaks: the fit's own warnings and the dozens `confint()` raises
+	# while profiling the separated likelihood are all recorded, not emitted
+	expect_no_warning(
+		m <- fit(fmls(y ~ .x(z)), .fn = glm, family = binomial(), data = d)
+	)
+	mt <- model_table(m, data = d)
+	w <- model_diagnostics(mt)
+	expect_equal(nrow(w), 1)
+	expect_match(w$warnings[[1]], "fitted probabilities|did not converge", all = FALSE)
+	# Repeats collapse to one line with a count
+	expect_true(any(grepl("\\(x[0-9]+\\)$", w$warnings[[1]])))
+	expect_output(print(mt), "fit with warnings")
+	# Convergence is not estimability: the fit is `fitted`, and the separation
+	# shows as a coefficient whose interval the profile could not bound and a
+	# standard error in the thousands, with no threshold to invent
+	expect_equal(w$status, "fitted")
+	expect_equal(w$unbounded, 1L)
+	expect_gt(w$max_std_error, 1000)
+	# A clean fit records none of it
+	clean <- model_diagnostics(model_table(fit(fmls(mpg ~ .x(wt)), .fn = lm, data = mtcars)))
+	expect_length(clean$warnings[[1]], 0)
+	expect_equal(clean$unbounded, 0L)
+	# The raw path re-emits them, since a bare fit has nowhere to keep them
+	raw <- testthat::capture_warnings(
+		fit(fmls(y ~ .x(z)), .fn = glm, family = binomial(), data = d, raw = TRUE)
+	)
+	expect_true(any(grepl("fitted probabilities|did not converge", raw)))
 })

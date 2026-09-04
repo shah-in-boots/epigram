@@ -30,7 +30,7 @@ statistics from \code{\link[broom:glance]{broom::glance()}}, the parameter estim
 A \code{mdl_tbl} object can be flattened to its specific parameters, their
 estimates, and model-level summary statistics -- one row per model term.
 Models that were not fit (or failed) are dropped with a message; see
-\code{\link[=model_failures]{model_failures()}} for why they failed. This relies on the \code{\link[broom:tidy]{broom::tidy()}}
+\code{\link[=model_diagnostics]{model_diagnostics()}} for why they failed. This relies on the \code{\link[broom:tidy]{broom::tidy()}}
 output stored when the models were made.
 }
 \section{Exponentiation}{

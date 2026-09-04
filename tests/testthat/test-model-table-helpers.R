@@ -46,7 +46,7 @@ test_that("printing distinguishes fitted, failed, and unfit models", {
 	expect_true(any(grepl("1 fitted", out)))
 	expect_true(any(grepl("1 failed", out)))
 	expect_true(any(grepl("1 unfit", out)))
-	expect_true(any(grepl("model_failures\\(\\)", out)))
+	expect_true(any(grepl("model_diagnostics\\(\\)", out)))
 	expect_true(any(grepl("await `fit\\(\\)`", out)))
 
 	# Unattached data is called out
@@ -86,7 +86,7 @@ test_that("summary maps the fleet and explains failures", {
 
 })
 
-test_that("model_failures returns the attempted-and-errored models", {
+test_that("model_diagnostics reports every model, failures with their errors", {
 
 	fitted <-
 		fmls(mpg ~ wt) |>
@@ -99,15 +99,21 @@ test_that("model_failures returns the attempted-and-errored models", {
 
 	x <- model_table(ok = fitted, broken = failed, pending)
 
-	fails <- model_failures(x)
-	expect_s3_class(fails, "tbl_df")
-	expect_equal(nrow(fails), 1) # unfit formulas are not failures
-	expect_equal(fails$name, "broken")
-	expect_match(fails$error, "not_a_column")
+	d <- model_diagnostics(x)
+	expect_s3_class(d, "tbl_df")
+	# Every row is reported, so a filter on `status` is the only step left
+	expect_equal(nrow(d), 3)
+	expect_equal(d$status, c("fitted", "failed", "unfit"))
+	expect_match(d$error[2], "not_a_column")
+	expect_true(is.na(d$error[1]))
 
-	# A clean table reports no failures
-	clean <- model_table(fitted)
-	expect_equal(nrow(model_failures(clean)), 0)
+	# A fitted model carries its counts; a formula not yet fit carries none
+	expect_equal(d$terms[1], 2L)
+	expect_equal(d$aliased[1], 0L)
+	expect_equal(d$unbounded[1], 0L)
+	expect_true(is.finite(d$max_std_error[1]))
+	expect_true(is.na(d$terms[3]))
+	expect_length(d$warnings[[1]], 0)
 
 })
 
